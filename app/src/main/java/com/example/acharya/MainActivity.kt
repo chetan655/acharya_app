@@ -1,11 +1,18 @@
-package com.example.acharya// Keep YOUR original package name here!
+package com.example.acharya
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 
 class MainActivity : ComponentActivity() {
@@ -13,16 +20,25 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            // Using the standard Material 3 Theme.
-            // Note: Android Studio might have generated a custom theme for you
-            // (like "MyAppTheme"). You can use either!
-            MaterialTheme {
+            // 1. Check if the phone is naturally in dark mode
+            val systemTheme = isSystemInDarkTheme()
+
+            // 2. Create a toggleable state, starting with the phone's default
+            var isDarkTheme by remember { mutableStateOf(systemTheme) }
+
+            // 3. Switch the core app colors based on our state
+            val colors = if (isDarkTheme) darkColorScheme() else lightColorScheme()
+
+            MaterialTheme(colorScheme = colors) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    // This launches the chat interface we built in ChatScreen.kt
-                    ChatScreen()
+                    // Pass the theme state and the toggle action to our ChatScreen
+                    ChatScreen(
+                        isDarkTheme = isDarkTheme,
+                        onThemeToggle = { isDarkTheme = !isDarkTheme }
+                    )
                 }
             }
         }
