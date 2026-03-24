@@ -1,6 +1,6 @@
 package com.example.acharya
 
-import android.net.Uri // NEW: Needed for image URIs
+import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -15,7 +15,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.util.UUID
 
-// UPDATED: Now it can store an imageUri!
 data class ChatMessage(
     val text: String,
     val isFromUser: Boolean,
@@ -35,16 +34,33 @@ class ChatViewModel : ViewModel() {
         messages.clear()
     }
 
-    // UPDATED: Added imageUri as a parameter
-    fun sendMessage(question: String, lat: Double, long: Double, imageFile: File?, imageUri: Uri? = null) {
-
-        // Add user message (and image) to the UI immediately
+    fun sendMessage(
+        question: String,
+        lat: Double,
+        long: Double,
+        imageFile: File?,
+        imageUri: Uri? = null,
+        profile: UserProfile? = null
+    ) {
         messages.add(ChatMessage(text = question, isFromUser = true, imageUri = imageUri))
 
         viewModelScope.launch {
             isLoading = true
             try {
-                val questionBody = question.toRequestBody("text/plain".toMediaTypeOrNull())
+                var finalQuestionText = question
+
+                if (messages.size == 1 && profile != null) {
+                    // UPDATED: Now checks if name is filled out too
+                    val hasProfileData = profile.name.isNotBlank() || profile.age.isNotBlank() || profile.allergies.isNotBlank() || profile.conditions.isNotBlank()
+
+                    if (hasProfileData) {
+                        // UPDATED: Injects the Patient Name into the hidden prompt
+                        val hiddenContext = "\n\n[System Note - Patient Profile: Name: ${profile.name}, Age ${profile.age}, Gender ${profile.gender}, Allergies: ${profile.allergies}, Chronic Conditions: ${profile.conditions}. Please address the patient by name if appropriate and consider this context in your medical advice.]"
+                        finalQuestionText += hiddenContext
+                    }
+                }
+
+                val questionBody = finalQuestionText.toRequestBody("text/plain".toMediaTypeOrNull())
                 val latBody = lat.toString().toRequestBody("text/plain".toMediaTypeOrNull())
                 val longBody = long.toString().toRequestBody("text/plain".toMediaTypeOrNull())
                 val threadIdBody = currentThreadId.toRequestBody("text/plain".toMediaTypeOrNull())

@@ -38,6 +38,11 @@ android {
 }
 
 dependencies {
+    // Android DataStore for saving the profile locally
+    implementation("androidx.datastore:datastore-preferences:1.0.0")
+
+    // Jetpack Navigation for moving between the Chat and Profile screens
+    implementation("androidx.navigation:navigation-compose:2.7.7")
     // Networking
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
     implementation("com.squareup.retrofit2:retrofit:2.9.0")

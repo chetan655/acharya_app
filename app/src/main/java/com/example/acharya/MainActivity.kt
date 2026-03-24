@@ -14,19 +14,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         setContent {
-            // 1. Check if the phone is naturally in dark mode
             val systemTheme = isSystemInDarkTheme()
-
-            // 2. Create a toggleable state, starting with the phone's default
             var isDarkTheme by remember { mutableStateOf(systemTheme) }
-
-            // 3. Switch the core app colors based on our state
             val colors = if (isDarkTheme) darkColorScheme() else lightColorScheme()
 
             MaterialTheme(colorScheme = colors) {
@@ -34,11 +32,28 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    // Pass the theme state and the toggle action to our ChatScreen
-                    ChatScreen(
-                        isDarkTheme = isDarkTheme,
-                        onThemeToggle = { isDarkTheme = !isDarkTheme }
-                    )
+                    // 1. Create the Navigation Controller
+                    val navController = rememberNavController()
+
+                    // 2. Set up the Routes
+                    NavHost(navController = navController, startDestination = "chat") {
+
+                        // Route 1: The Chat Screen
+                        composable("chat") {
+                            ChatScreen(
+                                navController = navController,
+                                isDarkTheme = isDarkTheme,
+                                onThemeToggle = { isDarkTheme = !isDarkTheme }
+                            )
+                        }
+
+                        // Route 2: The Profile Screen
+                        composable("profile") {
+                            ProfileScreen(
+                                onNavigateBack = { navController.popBackStack() } // Goes back to chat
+                            )
+                        }
+                    }
                 }
             }
         }

@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Person // NEW: Core icon for the Profile button
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,6 +26,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController // NEW: Navigation import
 import coil.compose.AsyncImage
 import java.io.File
 import java.io.FileOutputStream
@@ -32,13 +34,17 @@ import java.io.FileOutputStream
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
+    navController: NavController, // NEW: Accepts the controller
     viewModel: ChatViewModel = viewModel(),
     isDarkTheme: Boolean,
     onThemeToggle: () -> Unit
 ) {
     var inputText by remember { mutableStateOf("") }
-
     val context = LocalContext.current
+
+    // NEW: Silently load the user's profile from DataStore
+    val userProfile by ProfileManager.getProfile(context).collectAsState(initial = UserProfile())
+
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -51,12 +57,23 @@ fun ChatScreen(
             TopAppBar(
                 title = { Text("Medical Assistant") },
                 actions = {
+                    // NEW: Profile Button
+                    IconButton(
+                        onClick = { navController.navigate("profile") },
+                        enabled = !viewModel.isLoading
+                    ) {
+                        Icon(Icons.Default.Person, contentDescription = "Profile")
+                    }
+
+                    // New Chat Button
                     IconButton(
                         onClick = { viewModel.startNewChat() },
                         enabled = !viewModel.isLoading
                     ) {
                         Icon(Icons.Default.Add, contentDescription = "New Chat")
                     }
+
+                    // Theme Toggle
                     IconButton(onClick = onThemeToggle) {
                         Text(
                             text = if (isDarkTheme) "☀️" else "🌙",
@@ -103,7 +120,6 @@ fun ChatScreen(
                 }
             }
 
-            // Image Preview Box before sending
             if (selectedImageUri != null) {
                 Box(modifier = Modifier.padding(bottom = 8.dp)) {
                     AsyncImage(
@@ -127,7 +143,6 @@ fun ChatScreen(
                 }
             }
 
-            // Input Area
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -161,8 +176,8 @@ fun ChatScreen(
                         if (canSend) {
                             val imageFile = selectedImageUri?.let { uriToFile(context, it) }
 
-                            // UPDATED: Now we pass selectedImageUri directly to the ViewModel
-                            viewModel.sendMessage(inputText, 28.6139, 77.2090, imageFile, selectedImageUri)
+                            // UPDATED: Pass the userProfile to the ViewModel here!
+                            viewModel.sendMessage(inputText, 28.6139, 77.2090, imageFile, selectedImageUri, userProfile)
 
                             inputText = ""
                             selectedImageUri = null
@@ -185,7 +200,6 @@ fun ChatScreen(
     }
 }
 
-// UPDATED: ChatBubble now supports displaying images inside the bubble!
 @Composable
 fun ChatBubble(message: ChatMessage, isDarkTheme: Boolean) {
     val alignment = if (message.isFromUser) Alignment.CenterEnd else Alignment.CenterStart
@@ -203,29 +217,24 @@ fun ChatBubble(message: ChatMessage, isDarkTheme: Boolean) {
     }
 
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = alignment) {
-        // We use a Column inside the background so we can stack the Image above the Text
         Column(
             modifier = Modifier
                 .background(bubbleColor, bubbleShape)
                 .padding(horizontal = 16.dp, vertical = 10.dp)
                 .widthIn(max = 280.dp)
         ) {
-
-            // 1. Show the image if one was attached
             if (message.imageUri != null) {
                 AsyncImage(
                     model = message.imageUri,
                     contentDescription = "Sent Image",
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 200.dp) // Keeps tall images from taking up the whole screen
+                        .heightIn(max = 200.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .padding(bottom = if (message.text.isNotBlank()) 8.dp else 0.dp), // Add spacing if there's text below it
+                        .padding(bottom = if (message.text.isNotBlank()) 8.dp else 0.dp),
                     contentScale = ContentScale.Crop
                 )
             }
-
-            // 2. Show the text (if they typed anything)
             if (message.text.isNotBlank()) {
                 Text(
                     text = message.text,
