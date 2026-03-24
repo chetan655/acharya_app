@@ -1,9 +1,10 @@
 package com.example.acharya
 
-import androidx.compose.runtime.getValue // Add this
+import android.net.Uri // NEW: Needed for image URIs
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf // Add this
-import androidx.compose.runtime.setValue // Add this
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
@@ -14,9 +15,11 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.util.UUID
 
+// UPDATED: Now it can store an imageUri!
 data class ChatMessage(
     val text: String,
-    val isFromUser: Boolean
+    val isFromUser: Boolean,
+    val imageUri: Uri? = null
 )
 
 class ChatViewModel : ViewModel() {
@@ -24,27 +27,22 @@ class ChatViewModel : ViewModel() {
     val messages = mutableStateListOf<ChatMessage>()
     private var currentThreadId: String = UUID.randomUUID().toString()
 
-    // Call this to reset the session and clear the screen
+    var isLoading by mutableStateOf(false)
+        private set
+
     fun startNewChat() {
         currentThreadId = UUID.randomUUID().toString()
         messages.clear()
     }
 
-    // NEW: State to track if the bot is thinking
-    var isLoading by mutableStateOf(false)
-        private set
+    // UPDATED: Added imageUri as a parameter
+    fun sendMessage(question: String, lat: Double, long: Double, imageFile: File?, imageUri: Uri? = null) {
 
-    fun sendMessage(question: String, lat: Double, long: Double, imageFile: File?) {
-        // Don't send empty messages
-        if (question.isBlank() && imageFile == null) return
-
-        // Add user message to UI immediately
-        messages.add(ChatMessage(text = question, isFromUser = true))
+        // Add user message (and image) to the UI immediately
+        messages.add(ChatMessage(text = question, isFromUser = true, imageUri = imageUri))
 
         viewModelScope.launch {
-            // Tell the UI to start spinning!
             isLoading = true
-
             try {
                 val questionBody = question.toRequestBody("text/plain".toMediaTypeOrNull())
                 val latBody = lat.toString().toRequestBody("text/plain".toMediaTypeOrNull())
@@ -66,7 +64,6 @@ class ChatViewModel : ViewModel() {
             } catch (e: Exception) {
                 messages.add(ChatMessage(text = "Error: ${e.message}", isFromUser = false))
             } finally {
-                // Tell the UI to stop spinning, regardless of success or failure
                 isLoading = false
             }
         }

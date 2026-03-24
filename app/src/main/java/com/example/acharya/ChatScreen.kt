@@ -1,22 +1,35 @@
 package com.example.acharya
 
+import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.material.icons.filled.Add
+import coil.compose.AsyncImage
+import java.io.File
+import java.io.FileOutputStream
 
-@OptIn(ExperimentalMaterial3Api::class) // Required for TopAppBar
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
     viewModel: ChatViewModel = viewModel(),
@@ -25,25 +38,25 @@ fun ChatScreen(
 ) {
     var inputText by remember { mutableStateOf("") }
 
-    // Scaffold automatically provides a framework for TopBars and content
+    val context = LocalContext.current
+    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+        onResult = { uri -> selectedImageUri = uri }
+    )
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Medical Assistant") },
                 actions = {
-                    // NEW: The "+" Button for a new chat
                     IconButton(
                         onClick = { viewModel.startNewChat() },
-                        // Disable the button if the bot is currently thinking
                         enabled = !viewModel.isLoading
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "New Chat"
-                        )
+                        Icon(Icons.Default.Add, contentDescription = "New Chat")
                     }
-
-                    // EXISTING: Your Dark Mode Toggle
                     IconButton(onClick = onThemeToggle) {
                         Text(
                             text = if (isDarkTheme) "☀️" else "🌙",
@@ -58,14 +71,12 @@ fun ChatScreen(
             )
         }
     ) { paddingValues ->
-        // We apply the paddingValues from Scaffold so the content doesn't hide behind the TopBar
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            // Chat Message List
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -74,15 +85,11 @@ fun ChatScreen(
                     ChatBubble(message, isDarkTheme)
                 }
 
-                // Loading indicator
                 if (viewModel.isLoading) {
                     item {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Start
+                            modifier = Modifier.fillMaxWidth().padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(20.dp),
@@ -90,51 +97,87 @@ fun ChatScreen(
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = "Agent is thinking...",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Text("Agent is thinking...", style = MaterialTheme.typography.bodyMedium)
                         }
+                    }
+                }
+            }
+
+            // Image Preview Box before sending
+            if (selectedImageUri != null) {
+                Box(modifier = Modifier.padding(bottom = 8.dp)) {
+                    AsyncImage(
+                        model = selectedImageUri,
+                        contentDescription = "Selected Image",
+                        modifier = Modifier
+                            .size(100.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentScale = ContentScale.Crop
+                    )
+                    IconButton(
+                        onClick = { selectedImageUri = null },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .size(24.dp)
+                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(50))
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Remove Image", tint = Color.White, modifier = Modifier.size(16.dp))
                     }
                 }
             }
 
             // Input Area
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                IconButton(
+                    onClick = {
+                        photoPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    enabled = !viewModel.isLoading
+                ) {
+                    Icon(Icons.Default.AddCircle, contentDescription = "Attach Photo", tint = MaterialTheme.colorScheme.primary)
+                }
+
                 OutlinedTextField(
                     value = inputText,
                     onValueChange = { inputText = it },
                     modifier = Modifier.weight(1f),
                     placeholder = { Text("Ask a question...") },
                     enabled = !viewModel.isLoading,
-                    shape = RoundedCornerShape(24.dp) // Making the text box pill-shaped like standard apps
+                    shape = RoundedCornerShape(24.dp)
                 )
 
                 Spacer(modifier = Modifier.width(8.dp))
 
+                val canSend = !viewModel.isLoading && (inputText.isNotBlank() || selectedImageUri != null)
+
                 IconButton(
                     onClick = {
-                        if (inputText.isNotBlank() && !viewModel.isLoading) {
-                            viewModel.sendMessage(inputText, 28.6139, 77.2090, null)
+                        if (canSend) {
+                            val imageFile = selectedImageUri?.let { uriToFile(context, it) }
+
+                            // UPDATED: Now we pass selectedImageUri directly to the ViewModel
+                            viewModel.sendMessage(inputText, 28.6139, 77.2090, imageFile, selectedImageUri)
+
                             inputText = ""
+                            selectedImageUri = null
                         }
                     },
-                    enabled = !viewModel.isLoading && inputText.isNotBlank(),
+                    enabled = canSend,
                     modifier = Modifier.background(
-                        color = if (!viewModel.isLoading && inputText.isNotBlank()) MaterialTheme.colorScheme.primary else Color.Transparent,
+                        color = if (canSend) MaterialTheme.colorScheme.primary else Color.Transparent,
                         shape = RoundedCornerShape(50)
                     )
                 ) {
                     Icon(
                         imageVector = Icons.Default.Send,
                         contentDescription = "Send",
-                        tint = if (!viewModel.isLoading && inputText.isNotBlank()) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = if (canSend) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -142,38 +185,68 @@ fun ChatScreen(
     }
 }
 
+// UPDATED: ChatBubble now supports displaying images inside the bubble!
 @Composable
 fun ChatBubble(message: ChatMessage, isDarkTheme: Boolean) {
     val alignment = if (message.isFromUser) Alignment.CenterEnd else Alignment.CenterStart
-
-    // Classic Chat App Colors (iMessage / ChatGPT style)
-    val userBubbleColor = if (isDarkTheme) Color(0xFF0A84FF) else Color(0xFF007AFF) // Sleek Blue
-    val botBubbleColor = if (isDarkTheme) Color(0xFF2C2C2E) else Color(0xFFE5E5EA)  // Dark/Light Gray
-
+    val userBubbleColor = if (isDarkTheme) Color(0xFF0A84FF) else Color(0xFF007AFF)
+    val botBubbleColor = if (isDarkTheme) Color(0xFF2C2C2E) else Color(0xFFE5E5EA)
     val userTextColor = Color.White
     val botTextColor = if (isDarkTheme) Color.White else Color.Black
-
     val bubbleColor = if (message.isFromUser) userBubbleColor else botBubbleColor
     val textColor = if (message.isFromUser) userTextColor else botTextColor
 
-    // Adjusting corner shapes to give that "tail" effect on the chat bubbles
     val bubbleShape = if (message.isFromUser) {
         RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp)
     } else {
         RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp)
     }
 
-    Box(
-        modifier = Modifier.fillMaxWidth(),
-        contentAlignment = alignment
-    ) {
-        Text(
-            text = message.text,
-            color = textColor,
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = alignment) {
+        // We use a Column inside the background so we can stack the Image above the Text
+        Column(
             modifier = Modifier
                 .background(bubbleColor, bubbleShape)
                 .padding(horizontal = 16.dp, vertical = 10.dp)
                 .widthIn(max = 280.dp)
-        )
+        ) {
+
+            // 1. Show the image if one was attached
+            if (message.imageUri != null) {
+                AsyncImage(
+                    model = message.imageUri,
+                    contentDescription = "Sent Image",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 200.dp) // Keeps tall images from taking up the whole screen
+                        .clip(RoundedCornerShape(8.dp))
+                        .padding(bottom = if (message.text.isNotBlank()) 8.dp else 0.dp), // Add spacing if there's text below it
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            // 2. Show the text (if they typed anything)
+            if (message.text.isNotBlank()) {
+                Text(
+                    text = message.text,
+                    color = textColor
+                )
+            }
+        }
+    }
+}
+
+fun uriToFile(context: Context, uri: Uri): File? {
+    return try {
+        val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+        val tempFile = File(context.cacheDir, "upload_image_${System.currentTimeMillis()}.jpg")
+        val outputStream = FileOutputStream(tempFile)
+        inputStream.copyTo(outputStream)
+        inputStream.close()
+        outputStream.close()
+        tempFile
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
     }
 }
