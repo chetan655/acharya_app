@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech // NEW: Text to Speech import
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.VolumeUp // NEW: Speaker Icon
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -83,10 +85,9 @@ fun ChatScreen(
         )
     }
 
-    // --- NEW: SPEECH RECOGNITION STATE & LOGIC ---
+    // --- SPEECH RECOGNITION (MIC) ---
     var isListening by remember { mutableStateOf(false) }
 
-    // Intent to tell Android what kind of speech we are listening for
     val speechIntent = remember {
         Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -94,7 +95,6 @@ fun ChatScreen(
         }
     }
 
-    // Set up the Speech Recognizer engine
     val speechRecognizer = remember {
         SpeechRecognizer.createSpeechRecognizer(context).apply {
             setRecognitionListener(object : RecognitionListener {
@@ -108,7 +108,6 @@ fun ChatScreen(
                     val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     if (!matches.isNullOrEmpty()) {
                         val recognizedText = matches[0]
-                        // Append the text if there's already something typed, otherwise just set it
                         inputText = if (inputText.isBlank()) recognizedText else "$inputText $recognizedText"
                     }
                     isListening = false
@@ -119,20 +118,31 @@ fun ChatScreen(
         }
     }
 
-    // Clean up the mic resource when leaving the screen to save battery
-    DisposableEffect(Unit) {
-        onDispose {
-            speechRecognizer.destroy()
-        }
-    }
-
-    // Launcher to ask for Microphone permission specifically when they click the mic
     val micPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
             isListening = true
             speechRecognizer.startListening(speechIntent)
+        }
+    }
+
+    // --- NEW: TEXT TO SPEECH (SPEAKER) ---
+    var tts by remember { mutableStateOf<TextToSpeech?>(null) }
+
+    // Initialize TTS and clean it up when leaving the screen
+    DisposableEffect(context) {
+        val textToSpeech = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                tts?.language = Locale.getDefault()
+            }
+        }
+        tts = textToSpeech
+
+        onDispose {
+            speechRecognizer.destroy() // Clean up mic
+            textToSpeech.stop()        // Clean up speaker
+            textToSpeech.shutdown()
         }
     }
     // ---------------------------------------------
@@ -193,7 +203,14 @@ fun ChatScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(viewModel.messages) { message ->
-                    ChatBubble(message, isDarkTheme)
+                    // UPDATED: Pass the TTS speak function down to the bubble
+                    ChatBubble(
+                        message = message,
+                        isDarkTheme = isDarkTheme,
+                        onSpeak = { text ->
+                            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+                        }
+                    )
                 }
 
                 if (viewModel.isLoading) {
@@ -252,7 +269,6 @@ fun ChatScreen(
                     Icon(Icons.Default.AddCircle, contentDescription = "Attach Photo", tint = MaterialTheme.colorScheme.primary)
                 }
 
-                // UPDATED: Text Field now has a Trailing Icon for the Microphone
                 OutlinedTextField(
                     value = inputText,
                     onValueChange = { inputText = it },
@@ -279,7 +295,6 @@ fun ChatScreen(
                             Icon(
                                 imageVector = Icons.Default.Mic,
                                 contentDescription = "Voice Input",
-                                // Turns red when actively recording!
                                 tint = if (isListening) Color.Red else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -323,8 +338,9 @@ fun ChatScreen(
     }
 }
 
+// UPDATED: Now accepts an onSpeak function
 @Composable
-fun ChatBubble(message: ChatMessage, isDarkTheme: Boolean) {
+fun ChatBubble(message: ChatMessage, isDarkTheme: Boolean, onSpeak: (String) -> Unit) {
     val alignment = if (message.isFromUser) Alignment.CenterEnd else Alignment.CenterStart
     val userBubbleColor = if (isDarkTheme) Color(0xFF0A84FF) else Color(0xFF007AFF)
     val botBubbleColor = if (isDarkTheme) Color(0xFF2C2C2E) else Color(0xFFE5E5EA)
@@ -363,6 +379,26 @@ fun ChatBubble(message: ChatMessage, isDarkTheme: Boolean) {
                     text = message.text,
                     color = textColor
                 )
+            }
+
+            // NEW: Speaker Icon (Only shows for the AI's messages)
+            if (!message.isFromUser && message.text.isNotBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    IconButton(
+                        onClick = { onSpeak(message.text) },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.VolumeUp,
+                            contentDescription = "Read aloud",
+                            tint = textColor.copy(alpha = 0.7f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
             }
         }
     }
