@@ -1,5 +1,6 @@
 package com.example.acharya
 
+import android.Manifest // NEW: For requesting location permissions
 import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -14,7 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DocumentScanner // For the Scanner Button
+import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
@@ -46,6 +47,35 @@ fun ChatScreen(
     val userProfile by ProfileManager.getProfile(context).collectAsState(initial = UserProfile())
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
 
+    // --- NEW: LIVE LOCATION STATE & PERMISSIONS ---
+    var userLat by remember { mutableStateOf(0.0) }
+    var userLong by remember { mutableStateOf(0.0) }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val isGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+
+        if (isGranted) {
+            LocationHelper.getCurrentLocation(context) { lat, long ->
+                userLat = lat
+                userLong = long
+            }
+        }
+    }
+
+    // Automatically ask for location permissions when the screen opens
+    LaunchedEffect(Unit) {
+        locationPermissionLauncher.launch(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            )
+        )
+    }
+    // ----------------------------------------------
+
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
         onResult = { uri -> selectedImageUri = uri }
@@ -56,7 +86,6 @@ fun ChatScreen(
             TopAppBar(
                 title = { Text("Medical Assistant") },
                 actions = {
-                    // NEW: Document Scanner Button
                     IconButton(
                         onClick = { navController.navigate("scanner") },
                         enabled = !viewModel.isLoading
@@ -64,7 +93,6 @@ fun ChatScreen(
                         Icon(Icons.Default.DocumentScanner, contentDescription = "Scanner")
                     }
 
-                    // Profile Button
                     IconButton(
                         onClick = { navController.navigate("profile") },
                         enabled = !viewModel.isLoading
@@ -72,7 +100,6 @@ fun ChatScreen(
                         Icon(Icons.Default.Person, contentDescription = "Profile")
                     }
 
-                    // New Chat Button
                     IconButton(
                         onClick = { viewModel.startNewChat() },
                         enabled = !viewModel.isLoading
@@ -80,7 +107,6 @@ fun ChatScreen(
                         Icon(Icons.Default.Add, contentDescription = "New Chat")
                     }
 
-                    // Theme Toggle
                     IconButton(onClick = onThemeToggle) {
                         Text(
                             text = if (isDarkTheme) "☀️" else "🌙",
@@ -182,7 +208,17 @@ fun ChatScreen(
                     onClick = {
                         if (canSend) {
                             val imageFile = selectedImageUri?.let { uriToFile(context, it) }
-                            viewModel.sendMessage(inputText, 28.6139, 77.2090, imageFile, selectedImageUri, userProfile)
+
+                            // UPDATED: Now passing the REAL userLat and userLong to the backend!
+                            viewModel.sendMessage(
+                                question = inputText,
+                                lat = userLat,
+                                long = userLong,
+                                imageFile = imageFile,
+                                imageUri = selectedImageUri,
+                                profile = userProfile
+                            )
+
                             inputText = ""
                             selectedImageUri = null
                         }
