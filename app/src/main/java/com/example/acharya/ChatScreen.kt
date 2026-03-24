@@ -1,8 +1,14 @@
 package com.example.acharya
 
-import android.Manifest // NEW: For requesting location permissions
+import android.Manifest
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -16,6 +22,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DocumentScanner
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
@@ -27,11 +34,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import java.io.File
 import java.io.FileOutputStream
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,7 +56,7 @@ fun ChatScreen(
     val userProfile by ProfileManager.getProfile(context).collectAsState(initial = UserProfile())
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
 
-    // --- NEW: LIVE LOCATION STATE & PERMISSIONS ---
+    // --- LIVE LOCATION STATE ---
     var userLat by remember { mutableStateOf(0.0) }
     var userLong by remember { mutableStateOf(0.0) }
 
@@ -65,7 +74,6 @@ fun ChatScreen(
         }
     }
 
-    // Automatically ask for location permissions when the screen opens
     LaunchedEffect(Unit) {
         locationPermissionLauncher.launch(
             arrayOf(
@@ -74,7 +82,60 @@ fun ChatScreen(
             )
         )
     }
-    // ----------------------------------------------
+
+    // --- NEW: SPEECH RECOGNITION STATE & LOGIC ---
+    var isListening by remember { mutableStateOf(false) }
+
+    // Intent to tell Android what kind of speech we are listening for
+    val speechIntent = remember {
+        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+        }
+    }
+
+    // Set up the Speech Recognizer engine
+    val speechRecognizer = remember {
+        SpeechRecognizer.createSpeechRecognizer(context).apply {
+            setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) {}
+                override fun onBeginningOfSpeech() {}
+                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onEndOfSpeech() { isListening = false }
+                override fun onError(error: Int) { isListening = false }
+                override fun onResults(results: Bundle?) {
+                    val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    if (!matches.isNullOrEmpty()) {
+                        val recognizedText = matches[0]
+                        // Append the text if there's already something typed, otherwise just set it
+                        inputText = if (inputText.isBlank()) recognizedText else "$inputText $recognizedText"
+                    }
+                    isListening = false
+                }
+                override fun onPartialResults(partialResults: Bundle?) {}
+                override fun onEvent(eventType: Int, params: Bundle?) {}
+            })
+        }
+    }
+
+    // Clean up the mic resource when leaving the screen to save battery
+    DisposableEffect(Unit) {
+        onDispose {
+            speechRecognizer.destroy()
+        }
+    }
+
+    // Launcher to ask for Microphone permission specifically when they click the mic
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            isListening = true
+            speechRecognizer.startListening(speechIntent)
+        }
+    }
+    // ---------------------------------------------
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
@@ -191,13 +252,38 @@ fun ChatScreen(
                     Icon(Icons.Default.AddCircle, contentDescription = "Attach Photo", tint = MaterialTheme.colorScheme.primary)
                 }
 
+                // UPDATED: Text Field now has a Trailing Icon for the Microphone
                 OutlinedTextField(
                     value = inputText,
                     onValueChange = { inputText = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("Ask a question...") },
+                    placeholder = { Text(if (isListening) "Listening..." else "Ask a question...") },
                     enabled = !viewModel.isLoading,
-                    shape = RoundedCornerShape(24.dp)
+                    shape = RoundedCornerShape(24.dp),
+                    trailingIcon = {
+                        IconButton(
+                            onClick = {
+                                if (isListening) {
+                                    speechRecognizer.stopListening()
+                                    isListening = false
+                                } else {
+                                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                        isListening = true
+                                        speechRecognizer.startListening(speechIntent)
+                                    } else {
+                                        micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                    }
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Mic,
+                                contentDescription = "Voice Input",
+                                // Turns red when actively recording!
+                                tint = if (isListening) Color.Red else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 )
 
                 Spacer(modifier = Modifier.width(8.dp))
@@ -208,8 +294,6 @@ fun ChatScreen(
                     onClick = {
                         if (canSend) {
                             val imageFile = selectedImageUri?.let { uriToFile(context, it) }
-
-                            // UPDATED: Now passing the REAL userLat and userLong to the backend!
                             viewModel.sendMessage(
                                 question = inputText,
                                 lat = userLat,
@@ -218,7 +302,6 @@ fun ChatScreen(
                                 imageUri = selectedImageUri,
                                 profile = userProfile
                             )
-
                             inputText = ""
                             selectedImageUri = null
                         }
