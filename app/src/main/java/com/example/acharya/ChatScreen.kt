@@ -14,7 +14,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Person // NEW: Core icon for the Profile button
+import androidx.compose.material.icons.filled.DocumentScanner // For the Scanner Button
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,7 +27,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavController // NEW: Navigation import
+import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import java.io.File
 import java.io.FileOutputStream
@@ -34,7 +35,7 @@ import java.io.FileOutputStream
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
-    navController: NavController, // NEW: Accepts the controller
+    navController: NavController,
     viewModel: ChatViewModel = viewModel(),
     isDarkTheme: Boolean,
     onThemeToggle: () -> Unit
@@ -42,9 +43,7 @@ fun ChatScreen(
     var inputText by remember { mutableStateOf("") }
     val context = LocalContext.current
 
-    // NEW: Silently load the user's profile from DataStore
     val userProfile by ProfileManager.getProfile(context).collectAsState(initial = UserProfile())
-
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -57,7 +56,15 @@ fun ChatScreen(
             TopAppBar(
                 title = { Text("Medical Assistant") },
                 actions = {
-                    // NEW: Profile Button
+                    // NEW: Document Scanner Button
+                    IconButton(
+                        onClick = { navController.navigate("scanner") },
+                        enabled = !viewModel.isLoading
+                    ) {
+                        Icon(Icons.Default.DocumentScanner, contentDescription = "Scanner")
+                    }
+
+                    // Profile Button
                     IconButton(
                         onClick = { navController.navigate("profile") },
                         enabled = !viewModel.isLoading
@@ -175,10 +182,7 @@ fun ChatScreen(
                     onClick = {
                         if (canSend) {
                             val imageFile = selectedImageUri?.let { uriToFile(context, it) }
-
-                            // UPDATED: Pass the userProfile to the ViewModel here!
                             viewModel.sendMessage(inputText, 28.6139, 77.2090, imageFile, selectedImageUri, userProfile)
-
                             inputText = ""
                             selectedImageUri = null
                         }

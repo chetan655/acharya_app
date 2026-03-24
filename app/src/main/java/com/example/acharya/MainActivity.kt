@@ -32,25 +32,32 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    // 1. Create the Navigation Controller
                     val navController = rememberNavController()
 
-                    // 2. Set up the Routes
+                    // Creates ONE viewmodel to be shared across screens
+                    val sharedViewModel: ChatViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+
                     NavHost(navController = navController, startDestination = "chat") {
 
-                        // Route 1: The Chat Screen
                         composable("chat") {
                             ChatScreen(
                                 navController = navController,
+                                viewModel = sharedViewModel,
                                 isDarkTheme = isDarkTheme,
                                 onThemeToggle = { isDarkTheme = !isDarkTheme }
                             )
                         }
 
-                        // Route 2: The Profile Screen
                         composable("profile") {
                             ProfileScreen(
-                                onNavigateBack = { navController.popBackStack() } // Goes back to chat
+                                onNavigateBack = { navController.popBackStack() }
+                            )
+                        }
+
+                        composable("scanner") {
+                            ScannerScreen(
+                                navController = navController,
+                                viewModel = sharedViewModel
                             )
                         }
                     }

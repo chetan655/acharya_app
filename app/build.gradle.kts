@@ -40,6 +40,7 @@ android {
 dependencies {
     // Android DataStore for saving the profile locally
     implementation("androidx.datastore:datastore-preferences:1.0.0")
+    implementation("androidx.compose.material:material-icons-extended:1.6.0")
 
     // Jetpack Navigation for moving between the Chat and Profile screens
     implementation("androidx.navigation:navigation-compose:2.7.7")

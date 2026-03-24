@@ -23,12 +23,21 @@ data class ChatMessage(
 
 class ChatViewModel : ViewModel() {
 
+    // --- CHAT STATE ---
     val messages = mutableStateListOf<ChatMessage>()
     private var currentThreadId: String = UUID.randomUUID().toString()
 
     var isLoading by mutableStateOf(false)
         private set
 
+    // --- SCANNER STATE ---
+    var scannerResult by mutableStateOf<String?>(null)
+        private set
+
+    var isScanning by mutableStateOf(false)
+        private set
+
+    // --- CHAT FUNCTIONS ---
     fun startNewChat() {
         currentThreadId = UUID.randomUUID().toString()
         messages.clear()
@@ -49,12 +58,11 @@ class ChatViewModel : ViewModel() {
             try {
                 var finalQuestionText = question
 
+                // Stealth Injection of Profile Context
                 if (messages.size == 1 && profile != null) {
-                    // UPDATED: Now checks if name is filled out too
                     val hasProfileData = profile.name.isNotBlank() || profile.age.isNotBlank() || profile.allergies.isNotBlank() || profile.conditions.isNotBlank()
 
                     if (hasProfileData) {
-                        // UPDATED: Injects the Patient Name into the hidden prompt
                         val hiddenContext = "\n\n[System Note - Patient Profile: Name: ${profile.name}, Age ${profile.age}, Gender ${profile.gender}, Allergies: ${profile.allergies}, Chronic Conditions: ${profile.conditions}. Please address the patient by name if appropriate and consider this context in your medical advice.]"
                         finalQuestionText += hiddenContext
                     }
@@ -81,6 +89,45 @@ class ChatViewModel : ViewModel() {
                 messages.add(ChatMessage(text = "Error: ${e.message}", isFromUser = false))
             } finally {
                 isLoading = false
+            }
+        }
+    }
+
+    // --- SCANNER FUNCTIONS ---
+    fun resetScanner() {
+        scannerResult = null
+    }
+
+    fun analyzePrescription(imageFile: File?) {
+        if (imageFile == null) return
+
+        viewModelScope.launch {
+            isScanning = true
+            scannerResult = null
+
+            try {
+                val promptText = "Please analyze this medical document/prescription. Extract and clearly list the following information using bullet points:\n1. Active Ingredients / Medicine Name\n2. Dosage Instructions\n3. Potential Side Effects"
+
+                val questionBody = promptText.toRequestBody("text/plain".toMediaTypeOrNull())
+                val latBody = 0.0.toString().toRequestBody("text/plain".toMediaTypeOrNull())
+                val longBody = 0.0.toString().toRequestBody("text/plain".toMediaTypeOrNull())
+
+                val oneOffThreadId = UUID.randomUUID().toString()
+                val threadIdBody = oneOffThreadId.toRequestBody("text/plain".toMediaTypeOrNull())
+
+                val requestFile = imageFile.asRequestBody("image/*".toMediaTypeOrNull())
+                val imagePart = MultipartBody.Part.createFormData("image", imageFile.name, requestFile)
+
+                val responseText = RetrofitClient.api.sendMessage(
+                    questionBody, latBody, longBody, threadIdBody, imagePart
+                )
+
+                scannerResult = responseText
+
+            } catch (e: Exception) {
+                scannerResult = "Error analyzing document: ${e.message}"
+            } finally {
+                isScanning = false
             }
         }
     }
